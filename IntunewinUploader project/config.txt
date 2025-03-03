@@ -1,0 +1,3 @@
+TenantID=your-tenant-id
+ClientID=your-client-id
+ClientSecret=your-client-secret

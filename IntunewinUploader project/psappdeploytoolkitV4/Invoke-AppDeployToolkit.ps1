@@ -89,9 +89,9 @@ param
 
 $adtSession = @{
     # App variables.
-    AppVendor = 'Cisco'
-    AppName = 'smvkumbrella'
-    AppVersion = '1.4.0'
+    AppVendor = ''
+    AppName = ''
+    AppVersion = ''
     AppArch = ''
     AppLang = 'EN'
     AppRevision = '01'
@@ -99,10 +99,10 @@ $adtSession = @{
     AppRebootExitCodes = @(1641, 3010)
     AppScriptVersion = '1.0.0'
     AppScriptDate = '2000-12-31'
-    AppScriptAuthor = 'Tim Hjort, Telia Cygate'
+    AppScriptAuthor = 'Tim Hjort, Bareminimum Solutions'
 
     # Install Titles (Only set here to override defaults set by the toolkit).
-    InstallName = '7zip 24.09'
+    InstallName = ''
     InstallTitle = ''
 
     # Script variables.
@@ -133,23 +133,17 @@ function Install-ADTDeployment
     $adtSession.InstallPhase = $adtSession.DeploymentType
   
     ## Define installer paths
-    $installerPathCoreVPN = "$($adtSession.DirFiles)\cisco-secure-client-win-5.1.0.136-core-vpn-predeploy-k9.msi"
-    $installerPathDART = "$($adtSession.DirFiles)\cisco-secure-client-win-5.1.0.136-dart-predeploy-k9.msi"
-    $installerPathUmbrella = "$($adtSession.DirFiles)\cisco-secure-client-win-5.1.0.136-umbrella-predeploy-k9.msi"
+
 
     ## Install Core VPN
-    Start-ADTMsiProcess -Action Install -FilePath $installerPathCoreVPN -ArgumentList 'PRE_DEPLOY_DISABLE_VPN=1' -AdditionalArgumentList '/quiet' -LogFileName 'vpninstall.log'
 
-    ## Install DART
-    Start-ADTMsiProcess -Action Install -FilePath $installerPathDART -ArgumentList 'LOCKDOWN=1' -AdditionalArgumentList '/quiet' -LogFileName 'dartinstall.log'
 
-    ## Install Umbrella
-    Start-ADTMsiProcess -Action Install -FilePath $installerPathUmbrella -ArgumentList '/quiet'-LogFileName 'umbrellainstall.log'
+    
 
 
 		
 	  ## Set the application version in the registry
-    $registryKeyPath = "HKLM:\Software\TeliaCygate\$($adtSession.AppName)"
+    $registryKeyPath = "HKLM:\Software\Bareminimum\$($adtSession.AppName)"
     $registryValueName = 'AppVersion'
     $appVersion = $adtSession.AppVersion
 
@@ -192,22 +186,12 @@ function Uninstall-ADTDeployment
     ## MARK: Uninstall
     ##================================================
     $adtSession.InstallPhase = $adtSession.DeploymentType
-    $installerPathCoreVPN = "$($adtSession.DirFiles)\cisco-secure-client-win-5.1.0.136-core-vpn-predeploy-k9.msi"
-    $installerPathDART = "$($adtSession.DirFiles)\cisco-secure-client-win-5.1.0.136-dart-predeploy-k9.msi"
-    $installerPathUmbrella = "$($adtSession.DirFiles)\cisco-secure-client-win-5.1.0.136-umbrella-predeploy-k9.msi"
+  
 
-    ## Handle Zero-Config MSI uninstallations.
-     ## Uninstall Umbrella Predeploy
-    Start-ADTMsiProcess -Action Uninstall -FilePath $installerPathCoreVPN -ArgumentList '/quiet'
-
-    ## Uninstall DART Predeploy
-    Start-ADTMsiProcess -Action Uninstall -FilePath $installerPathDART -ArgumentList '/quiet'
-    ## Uninstall Core VPN Predeploy
-    Start-ADTMsiProcess -Action Uninstall -FilePath $installerPathUmbrella -ArgumentList '/quiet'
 
     ## <Perform Uninstallation tasks here>
     ## Remove the application registry key
-    $registryKeyPath = "HKLM:\Software\TeliaCygate\$($adtSession.AppName)"
+    $registryKeyPath = "HKLM:\Software\Bareminimum\$($adtSession.AppName)"
 
     Remove-ADTRegistryKey -Key $registryKeyPath -Recurse
 
