@@ -123,7 +123,7 @@ $JSONBody = [PSCustomObject][Ordered]@{
     "@type"      = "MessageCard"
     "@context"   = "<http://schema.org/extensions>"
     "themeColor" = '0078D7'
-    "title"      = "$($Array.count) App Secrets areExpiring Soon"
+    "title"      = "$($Array.count) App Secrets are expiring Soon"
     "text"       = "$textTable"
 }
 
