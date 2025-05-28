@@ -8,22 +8,37 @@ $requiredModules = @(
 )
 
 foreach ($module in $requiredModules) {
-    if (-not (Get-Module -Name $module -ListAvailable)) {
-        Write-Host "Installing module: $module"
-        Install-Module -Name $module -Force -Scope CurrentUser
-    } else {
-        Write-Host "Module $module is already installed."
+    try {
+        if (-not (Get-Module -Name $module -ListAvailable)) {
+            Write-Host "Installing module: $module"
+            Install-Module -Name $module -Force -Scope CurrentUser -ErrorAction Stop -AllowClobber
+        } else {
+            Write-Host "Module $module is already installed."
+        }
+
+        # Check if the module is already imported
+        if (-not (Get-Module -Name $module)) {
+            # Import the module
+            Import-Module $module -ErrorAction Stop
+            Write-Host "Module $module has been imported."
+        } else {
+            Write-Host "Module $module is already imported."
+        }
+    } catch {
+        Write-Error "Failed to install or import module $module : $_"
     }
 }
-# Import the module
-Import-Module $module
-# Connect to Microsoft Entra ID
-Connect-Entra -Scopes @(
-    'Policy.ReadWrite.ConditionalAccess',
-    'Policy.Read.All',
-    'Group.ReadWrite.All'
-)
-Write-Host "Connected to Microsoft Entra ID"
+
+try {
+    # Connect to Microsoft Entra ID
+    Connect-Entra -Scopes @(
+        'Policy.ReadWrite.ConditionalAccess',
+        'Policy.Read.All',
+        'Group.ReadWrite.All'
+    ) -ErrorAction Stop
+} catch {
+    Write-Error "Failed to connect to Microsoft Entra ID: $_"
+}
 
 $LicensResponse = Read-Host "Do you have Entra ID P2 Licenses? (Y/N)"
 if ($LicensResponse -eq "Y") {
@@ -47,9 +62,11 @@ if ($excludeGroupsResponse -eq '1') {
         GroupTypes = @()
     }
     $CreateExcludeGroup = New-EntraGroup @GroupParameters1
+    $excludeGroupId = $CreateExcludeGroup.Id
 }
 elseif ($excludeGroupsResponse -eq '2') {
     $GroupID = Read-Host "Please enter the group ID to assign the accounts to:"
+    $excludeGroupId = $GroupID
 
 }
 elseif ($excludeGroupsResponse -eq '3') {
@@ -89,7 +106,7 @@ $CA001 = @{
         }
         Users = @{
             IncludeRoles = $adminRoles
-            ExcludeGroups = @($CreateExcludeGroup.Id)
+            ExcludeGroups = @($excludeGroupId)
         }
         ClientAppTypes = @(
             "browser",
@@ -102,7 +119,7 @@ $CA001 = @{
     }
 }
 
-#New-EntraConditionalAccessPolicy @CA001
+New-EntraConditionalAccessPolicy @CA001
 
 ###CA002-Require phishing-resistant multifactor authentication for administrators##
 $CA002 = @{
@@ -114,7 +131,7 @@ $CA002 = @{
         }
         Users = @{
             IncludeRoles = $adminRoles
-            ExcludeGroups = @($CreateExcludeGroup.Id)
+            ExcludeGroups = @($excludeGroupId)
         }
         ClientAppTypes = @(
             "browser",
@@ -130,7 +147,7 @@ $CA002 = @{
     }
 }
 
-#New-EntraConditionalAccessPolicy @CA002
+New-EntraConditionalAccessPolicy @CA002
 
 ##CA005-Block legacy authentication
 
@@ -147,7 +164,7 @@ $CA005 = @{
         }
         Users = @{
             IncludeUsers = "All"
-            ExcludeGroups = @($CreateExcludeGroup.Id)
+            ExcludeGroups = @($excludeGroupId)
         }
     }
     GrantControls = @{
@@ -156,17 +173,13 @@ $CA005 = @{
     }
 }
 
-#New-EntraConditionalAccessPolicy @CA005
+New-EntraConditionalAccessPolicy @CA005
 
 ##CA007-Require MFA for all users##
-# Define excluded applications
 $excludedApps = @(
     "45a330b1-b1ec-4cc1-9161-9f03992aa49f", # Windows Store for Business
-    "0000000a-0000-0000-c000-000000000000"  # Microsoft Intune
+    "0000000a-0000-0000-c000-000000000000" 
 )
-
-# Get break glass accounts group ID
-$excludedGroup = Get-EntraGroup -Filter "displayName eq 'AZ-CA-User Exclude'"
 
 $CA007 = @{
     DisplayName = "CA007-Require MFA for all users"
@@ -178,12 +191,19 @@ $CA007 = @{
         }
         Users = @{
             IncludeUsers = "All"
-            ExcludeGroups = @($excludedGroup.Id)
+            ExcludeGroups = @($excludeGroupId)
         }
         ClientAppTypes = @(
             "browser",
             "mobileAppsAndDesktopClients"
         )
+    }
+    SessionControls = @{
+        SignInFrequency = @{
+            IsEnabled = $true
+            Value = 1
+            Type = "days"
+        }
     }
     GrantControls = @{
         _Operator = "OR"
@@ -191,12 +211,12 @@ $CA007 = @{
     }
 }
 
-#New-EntraConditionalAccessPolicy @CA007
+New-EntraConditionalAccessPolicy @CA007
 
 ##CA008-Require MFA for Azure management##
 
 $azureMgmtApps = @(
-    "797f4846-ba00-4fd7-ba43-dac1f8f63013"  # Windows Azure Service Management API
+    "797f4846-ba00-4fd7-ba43-dac1f8f63013"  
 )
 
 $CA008 = @{
@@ -208,7 +228,7 @@ $CA008 = @{
         }
         Users = @{
             IncludeUsers = "All"
-            ExcludeGroups = @($CreateExcludeGroup.Id)
+            ExcludeGroups = @($excludeGroupId)
         }
         ClientAppTypes = @(
             "browser",
@@ -221,14 +241,11 @@ $CA008 = @{
         BuiltInControls = @("mfa")
     }
 }
-
-#New-EntraConditionalAccessPolicy @CA008
+New-EntraConditionalAccessPolicy @CA008
 
 
 ##CA012-Requires Compliant Device##
-# Define excluded applications for device compliance
-$excludedAppsCompliance = @(
-    "45a330b1-b1ec-4cc1-9161-9f03992aa49f"  # Windows Store for Business
+$excludedAppsCompliance = @(    "45a330b1-b1ec-4cc1-9161-9f03992aa49f"
 )
 
 $CA012 = @{
@@ -241,7 +258,7 @@ $CA012 = @{
         }
         Users = @{
             IncludeUsers = @("All")
-            ExcludeGroups = @($CreateExcludeGroup.Id)
+            ExcludeGroups = @($excludeGroupId)
         }
         ClientAppTypes = @(
             "browser",
@@ -257,19 +274,12 @@ $CA012 = @{
         }
     }
     GrantControls = @{
-        _Operator = "AND"
+        Operator = "AND"
         BuiltInControls = @("compliantDevice")
     }
 }
+New-MgIdentityConditionalAccessPolicy -BodyParameter ($CA012 | ConvertTo-Json -Depth 10)
 
-try {
-    New-EntraConditionalAccessPolicy @CA012
-    Write-Host "CA012 created successfully" -ForegroundColor Green
-} catch {
-    Write-Host "Error creating CA012: $_" -ForegroundColor Red
-}
-
-New-EntraConditionalAccessPolicy @CA012
 ##CA017-Require reauthentication and disable browser persistence on Unmanaged Device##
 $CA017 = @{
     DisplayName = "CA017-Require reauthentication on unmanaged devices"
@@ -280,7 +290,7 @@ $CA017 = @{
         }
         Users = @{
             IncludeUsers = "All"
-            ExcludeGroups = @($CreateExcludeGroup.Id)
+            ExcludeGroups = @($excludeGroupId)
         }
         ClientAppTypes = @(
             "browser"
@@ -301,23 +311,9 @@ $CA017 = @{
         }
     }
 }
-
-#New-EntraConditionalAccessPolicy @CA017    
-
-##Disconnect from Microsoft Entra ID##
-Write-Host "Disconnecting from Microsoft Entra ID Module" -ForegroundColor Yellow
-Disconnect-Entra
-
-Connect-MgGraph -Scopes @(	
-    'Application.Read.All',
-    'Policy.ReadWrite.ConditionalAccess',
-    'Policy.Read.All'
-)
-Write-Host "Connected to Microsoft Graph"
+New-EntraConditionalAccessPolicy @CA017    
 
 if ($LicensResponse -eq "Y") {
-    Write-Host "Creating P2 license policies..." -ForegroundColor Yellow
-
     ##CA009-Sign-in risk-based multifactor authentication##
     $CA009 = @{
         DisplayName = "CA009-Sign-in risk-based MFA"
@@ -329,7 +325,7 @@ if ($LicensResponse -eq "Y") {
             }
             Users = @{
                 IncludeUsers = "All"
-                ExcludeGroups = @($CreateExcludeGroup.Id)
+                ExcludeGroups = @($excludeGroupId)
             }
             ClientAppTypes = @(
                 "browser",
@@ -360,7 +356,7 @@ $CA010 = @{
         }
         Users = @{
             IncludeUsers = "All"
-            ExcludeGroups = @($CreateExcludeGroup.Id)
+            ExcludeGroups = @($excludeGroupId)
         }
         ClientAppTypes = @(
             "all"
@@ -377,41 +373,32 @@ $CA010 = @{
     }
 }
 New-MgIdentityConditionalAccessPolicy -BodyParameter $CA010
-
-
-##CA011-Block access for users with insider risk##
-$CA011 = @{
-    DisplayName = "CA011-Block access for users with insider risk"
-    State = $reportOnly
-    Conditions = @{
-        "@odata.type" = "#microsoft.graph.conditionalAccessConditionSet"
-        Applications = @{
-            IncludeApplications = "All"
-        }
-        Users = @{
-            IncludeUsers = "All"
-            ExcludeGroups = @($CreateExcludeGroup.Id)
-        }
-        ClientAppTypes = @(
-            "browser",
-            "mobileAppsAndDesktopClients"
-        )
-        InsiderRiskLevels = @(
-            "high",
-            "medium"
-        )
-    }
-    GrantControls = @{
-        "@odata.type" = "#microsoft.graph.conditionalAccessGrantControls"
-        Operator = "OR"
-        BuiltInControls = @("block")
-    }
 }
+    try {
+        Disconnect-Entra -ErrorAction Stop
+        Write-Host "Disconnected from Microsoft Entra ID."
+    } catch {
+        Write-Error "Failed to disconnect from Microsoft Entra ID: $_"
+    }
 
-try {
-    New-MgIdentityConditionalAccessPolicy -BodyParameter $CA011
-    Write-Host "CA011 created successfully" -ForegroundColor Green
-} catch {
-    Write-Host "Error creating CA011: $_" -ForegroundColor Red
-}
+    # Cleanup: Uninstall modules
+foreach ($module in $requiredModules) {
+    try {
+        # First remove the module from the current session
+        if (Get-Module -Name "$module*") {
+            Write-Host "Removing module from current session: $module"
+            Remove-Module -Name "$module*" -Force -ErrorAction Stop
+        }
+
+        # Then uninstall all versions of the module and its submodules
+        $moduleVersions = Get-Module -Name "$module*" -ListAvailable
+        foreach ($version in $moduleVersions) {
+            Write-Host "Uninstalling module: $($version.Name) version $($version.Version)"
+            Uninstall-Module -Name $version.Name -RequiredVersion $version.Version -Force -ErrorAction Stop
+        }
+        
+        Write-Host "Module $module and its components have been completely removed" -ForegroundColor Green
+    } catch {
+        Write-Error "Failed to remove/uninstall module $module : $_"
+    }
 }
