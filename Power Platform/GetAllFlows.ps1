@@ -34,7 +34,24 @@ $UsersPassword = Read-Host "Enter your password" -AsSecureString
 ##Connects to the Powerapps modules
 Add-PowerAppsAccount -Username $UsersUserName -Password $UsersPassword
 
-Get-AdminFlow
+# Get all environments
+$environments = Get-AdminPowerAppEnvironment
+
+# Initialize counters
+$totalFlows = 0
+$enabledFlows = 0
+$disabledFlows = 0
+
+foreach ($env in $environments) {
+    $flows = Get-AdminFlow -EnvironmentName $env.EnvironmentName
+    $totalFlows += $flows.Count
+    $enabledFlows += ($flows | Where-Object { $_.Properties.state -eq "Started" }).Count
+    $disabledFlows += ($flows | Where-Object { $_.Properties.state -eq "Stopped" }).Count
+}
+
+Write-Host "Total flows: $totalFlows"
+Write-Host "Enabled flows: $enabledFlows"
+Write-Host "Disabled flows: $disabledFlows"
 
     # Cleanup: Uninstall modules
 foreach ($module in $requiredModules) {
