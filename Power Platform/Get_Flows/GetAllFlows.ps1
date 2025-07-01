@@ -79,6 +79,20 @@ try {
     Write-Host "Retrieving environments..." -ForegroundColor Cyan
     $environments = Get-AdminPowerAppEnvironment
     Write-Host "Found $($environments.Count) environments" -ForegroundColor Green
+    
+    # Debug: List environments found
+    if ($environments.Count -eq 0) {
+        Write-Warning "No environments found! This could indicate:"
+        Write-Host "  1. Authentication issues" -ForegroundColor Yellow
+        Write-Host "  2. Insufficient permissions" -ForegroundColor Yellow
+        Write-Host "  3. No Power Platform environments in tenant" -ForegroundColor Yellow
+        return
+    } else {
+        Write-Host "Environments found:" -ForegroundColor Cyan
+        foreach ($env in $environments) {
+            Write-Host "  - $($env.DisplayName) ($($env.EnvironmentName))" -ForegroundColor White
+        }
+    }
 
     # Initialize results array
     $allFlows = @()
@@ -89,25 +103,47 @@ try {
         
         try {
             # Get flows for this environment
+            Write-Host "  Querying flows..." -ForegroundColor Gray
             $flows = Get-AdminFlow -EnvironmentName $env.EnvironmentName
             
             if ($flows) {
                 Write-Host "  Found $($flows.Count) flows" -ForegroundColor Green
                 
+                # Debug: Show first flow details
+                if ($flows.Count -gt 0) {
+                    $firstFlow = $flows[0]
+                    Write-Host "  Sample flow details:" -ForegroundColor Gray
+                    Write-Host "    FlowName: $($firstFlow.FlowName)" -ForegroundColor Gray
+                    Write-Host "    DisplayName: $($firstFlow.DisplayName)" -ForegroundColor Gray
+                    Write-Host "    CreatedBy: $($firstFlow.CreatedBy)" -ForegroundColor Gray
+                    Write-Host "    State: $($firstFlow.State)" -ForegroundColor Gray
+                }
+                
                 # Add environment info to each flow
                 foreach ($flow in $flows) {
+                    # Handle flows without owners (orphaned flows)
+                    $createdBy = if ($flow.CreatedBy -and $flow.CreatedBy.displayName) {
+                        $flow.CreatedBy.displayName
+                    } elseif ($flow.CreatedBy -and $flow.CreatedBy.userPrincipalName) {
+                        $flow.CreatedBy.userPrincipalName
+                    } else {
+                        "** ORPHANED FLOW - No Owner **"
+                    }
+                    
+                    # Convert all values to strings to avoid Excel display issues
                     $flowInfo = [PSCustomObject]@{
-                        EnvironmentName = $env.EnvironmentName
-                        EnvironmentDisplayName = $env.DisplayName
-                        FlowName = $flow.FlowName
-                        FlowDisplayName = $flow.DisplayName
-                        FlowId = $flow.FlowId
-                        CreatedBy = $flow.CreatedBy.displayName
-                        CreatedTime = $flow.CreatedTime
-                        LastModifiedTime = $flow.LastModifiedTime
-                        State = $flow.State
-                        Enabled = $flow.Enabled
-                        TriggerType = $flow.Properties.definitionSummary.triggers.keys -join ', '
+                        EnvironmentName = [string]$env.EnvironmentName
+                        EnvironmentDisplayName = [string]$env.DisplayName
+                        FlowName = [string]$flow.FlowName
+                        FlowDisplayName = [string]$flow.DisplayName
+                        FlowId = [string]$flow.FlowId
+                        CreatedBy = [string]$createdBy
+                        CreatedTime = if ($flow.CreatedTime) { [string]$flow.CreatedTime } else { "" }
+                        LastModifiedTime = if ($flow.LastModifiedTime) { [string]$flow.LastModifiedTime } else { "" }
+                        State = [string]$flow.State
+                        Enabled = [string]$flow.Enabled
+                        TriggerType = if ($flow.Properties.definitionSummary.triggers.keys) { [string]($flow.Properties.definitionSummary.triggers.keys -join ', ') } else { "Unknown" }
+                        IsOrphaned = [string]($createdBy -eq "** ORPHANED FLOW - No Owner **")
                     }
                     $allFlows += $flowInfo
                 }
@@ -116,6 +152,7 @@ try {
             }
         } catch {
             Write-Warning "Failed to retrieve flows from environment $($env.DisplayName): $_"
+            Write-Host "  Error details: $($_.Exception.Message)" -ForegroundColor Red
         }
     }
 
@@ -123,16 +160,27 @@ try {
     Write-Host "`nFlow Inventory Summary:" -ForegroundColor Cyan
     Write-Host "Total Environments: $($environments.Count)" -ForegroundColor Green
     Write-Host "Total Flows Found: $($allFlows.Count)" -ForegroundColor Green
-    Write-Host "Enabled Flows: $(($allFlows | Where-Object {$_.Enabled -eq $true}).Count)" -ForegroundColor Green
-    Write-Host "Disabled Flows: $(($allFlows | Where-Object {$_.Enabled -eq $false}).Count)" -ForegroundColor Yellow
+    Write-Host "Enabled Flows: $(($allFlows | Where-Object {$_.Enabled -eq 'True'}).Count)" -ForegroundColor Green
+    Write-Host "Disabled Flows: $(($allFlows | Where-Object {$_.Enabled -eq 'False'}).Count)" -ForegroundColor Yellow
     Write-Host "Running Flows: $(($allFlows | Where-Object {$_.State -eq 'Started'}).Count)" -ForegroundColor Green
     Write-Host "Stopped Flows: $(($allFlows | Where-Object {$_.State -eq 'Stopped'}).Count)" -ForegroundColor Yellow
+    Write-Host "Orphaned Flows: $(($allFlows | Where-Object {$_.IsOrphaned -eq 'True'}).Count)" -ForegroundColor Red
+    Write-Host "Flows with Owners: $(($allFlows | Where-Object {$_.IsOrphaned -eq 'False'}).Count)" -ForegroundColor Green
+    
+    # Display orphaned flows warning if any exist
+    $orphanedCount = ($allFlows | Where-Object {$_.IsOrphaned -eq 'True'}).Count
+    if ($orphanedCount -gt 0) {
+        Write-Host "`n⚠️  WARNING: Found $orphanedCount orphaned flows without owners!" -ForegroundColor Red
+        Write-Host "   These flows may need administrative attention or cleanup." -ForegroundColor Yellow
+    }
     
     # Group by environment
     Write-Host "`nFlows by Environment:" -ForegroundColor Cyan
     $flowsByEnv = $allFlows | Group-Object EnvironmentDisplayName | Sort-Object Count -Descending
     foreach ($group in $flowsByEnv) {
-        Write-Host "  $($group.Name): $($group.Count) flows" -ForegroundColor White
+        $orphanedInEnv = ($group.Group | Where-Object {$_.IsOrphaned -eq 'True'}).Count
+        $orphanedText = if ($orphanedInEnv -gt 0) { " ($orphanedInEnv orphaned)" } else { "" }
+        Write-Host "  $($group.Name): $($group.Count) flows$orphanedText" -ForegroundColor White
     }
 
     # Export to Excel with multiple sheets
@@ -145,62 +193,81 @@ try {
     $envSummary = $allFlows | Group-Object EnvironmentDisplayName | ForEach-Object {
         $envFlows = $_.Group
         [PSCustomObject]@{
-            EnvironmentName = $_.Name
-            TotalFlows = $_.Count
-            EnabledFlows = ($envFlows | Where-Object {$_.Enabled -eq $true}).Count
-            DisabledFlows = ($envFlows | Where-Object {$_.Enabled -eq $false}).Count
-            RunningFlows = ($envFlows | Where-Object {$_.State -eq "Started"}).Count
-            StoppedFlows = ($envFlows | Where-Object {$_.State -eq "Stopped"}).Count
-            UniqueCreators = ($envFlows | Select-Object CreatedBy -Unique).Count
-            LastModified = ($envFlows | Sort-Object LastModifiedTime -Descending | Select-Object -First 1).LastModifiedTime
+            EnvironmentName = [string]$_.Name
+            TotalFlows = [string]$_.Count
+            EnabledFlows = [string]($envFlows | Where-Object {$_.Enabled -eq "True"}).Count
+            DisabledFlows = [string]($envFlows | Where-Object {$_.Enabled -eq "False"}).Count
+            RunningFlows = [string]($envFlows | Where-Object {$_.State -eq "Started"}).Count
+            StoppedFlows = [string]($envFlows | Where-Object {$_.State -eq "Stopped"}).Count
+            OrphanedFlows = [string]($envFlows | Where-Object {$_.IsOrphaned -eq "True"}).Count
+            UniqueCreators = [string]($envFlows | Where-Object {$_.IsOrphaned -eq "False"} | Select-Object CreatedBy -Unique).Count
+            LastModified = if ($envFlows) { [string]($envFlows | Sort-Object LastModifiedTime -Descending | Select-Object -First 1).LastModifiedTime } else { "" }
         }
     }
     
-    # Creator Summary
-    $creatorSummary = $allFlows | Group-Object CreatedBy | ForEach-Object {
+    # Creator Summary (excluding orphaned flows)
+    $creatorSummary = $allFlows | Where-Object {$_.IsOrphaned -eq "False"} | Group-Object CreatedBy | ForEach-Object {
         $creatorFlows = $_.Group
         [PSCustomObject]@{
-            CreatedBy = $_.Name
-            TotalFlows = $_.Count
-            EnabledFlows = ($creatorFlows | Where-Object {$_.Enabled -eq $true}).Count
-            DisabledFlows = ($creatorFlows | Where-Object {$_.Enabled -eq $false}).Count
-            Environments = ($creatorFlows | Select-Object EnvironmentDisplayName -Unique).Count
-            LastActivity = ($creatorFlows | Sort-Object LastModifiedTime -Descending | Select-Object -First 1).LastModifiedTime
+            CreatedBy = [string]$_.Name
+            TotalFlows = [string]$_.Count
+            EnabledFlows = [string]($creatorFlows | Where-Object {$_.Enabled -eq "True"}).Count
+            DisabledFlows = [string]($creatorFlows | Where-Object {$_.Enabled -eq "False"}).Count
+            Environments = [string]($creatorFlows | Select-Object EnvironmentDisplayName -Unique).Count
+            LastActivity = if ($creatorFlows) { [string]($creatorFlows | Sort-Object LastModifiedTime -Descending | Select-Object -First 1).LastModifiedTime } else { "" }
         }
-    } | Sort-Object TotalFlows -Descending
+    } | Sort-Object { [int]$_.TotalFlows } -Descending
+    
+    # Orphaned Flows Summary
+    $orphanedFlows = $allFlows | Where-Object {$_.IsOrphaned -eq "True"}
+    $orphanedSummary = if ($orphanedFlows.Count -gt 0) {
+        $orphanedFlows | Group-Object EnvironmentDisplayName | ForEach-Object {
+            $orphanFlows = $_.Group
+            [PSCustomObject]@{
+                EnvironmentName = [string]$_.Name
+                OrphanedFlows = [string]$_.Count
+                EnabledOrphaned = [string]($orphanFlows | Where-Object {$_.Enabled -eq "True"}).Count
+                DisabledOrphaned = [string]($orphanFlows | Where-Object {$_.Enabled -eq "False"}).Count
+                RunningOrphaned = [string]($orphanFlows | Where-Object {$_.State -eq "Started"}).Count
+                StoppedOrphaned = [string]($orphanFlows | Where-Object {$_.State -eq "Stopped"}).Count
+                OldestOrphaned = if ($orphanFlows) { [string]($orphanFlows | Sort-Object CreatedTime | Select-Object -First 1).CreatedTime } else { "" }
+                NewestOrphaned = if ($orphanFlows) { [string]($orphanFlows | Sort-Object CreatedTime -Descending | Select-Object -First 1).CreatedTime } else { "" }
+            }
+        }
+    } else {
+        @([PSCustomObject]@{
+            EnvironmentName = "No orphaned flows found"
+            OrphanedFlows = "0"
+            EnabledOrphaned = "0"
+            DisabledOrphaned = "0"
+            RunningOrphaned = "0"
+            StoppedOrphaned = "0"
+            OldestOrphaned = ""
+            NewestOrphaned = ""
+        })
+    }
     
     # Trigger Type Summary
     $triggerSummary = $allFlows | Group-Object TriggerType | ForEach-Object {
         [PSCustomObject]@{
-            TriggerType = $_.Name
-            FlowCount = $_.Count
-            Percentage = [math]::Round(($_.Count / $allFlows.Count) * 100, 2)
+            TriggerType = [string]$_.Name
+            FlowCount = [string]$_.Count
+            Percentage = [string]([math]::Round(($_.Count / $allFlows.Count) * 100, 2))
         }
-    } | Sort-Object FlowCount -Descending
+    } | Sort-Object { [int]$_.FlowCount } -Descending
     
     # Overall Summary
-    $overallSummary = [PSCustomObject]@{
-        Metric = @(
-            "Total Environments",
-            "Total Flows",
-            "Enabled Flows", 
-            "Disabled Flows",
-            "Running Flows",
-            "Stopped Flows",
-            "Unique Creators",
-            "Report Generated"
-        )
-        Value = @(
-            $environments.Count,
-            $allFlows.Count,
-            ($allFlows | Where-Object {$_.Enabled -eq $true}).Count,
-            ($allFlows | Where-Object {$_.Enabled -eq $false}).Count,
-            ($allFlows | Where-Object {$_.State -eq "Started"}).Count,
-            ($allFlows | Where-Object {$_.State -eq "Stopped"}).Count,
-            ($allFlows | Select-Object CreatedBy -Unique).Count,
-            (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-        )
-    }
+    $overallSummary = @()
+    $overallSummary += [PSCustomObject]@{ Metric = "Total Environments"; Value = $environments.Count.ToString() }
+    $overallSummary += [PSCustomObject]@{ Metric = "Total Flows"; Value = $allFlows.Count.ToString() }
+    $overallSummary += [PSCustomObject]@{ Metric = "Enabled Flows"; Value = ($allFlows | Where-Object {$_.Enabled -eq $true}).Count.ToString() }
+    $overallSummary += [PSCustomObject]@{ Metric = "Disabled Flows"; Value = ($allFlows | Where-Object {$_.Enabled -eq $false}).Count.ToString() }
+    $overallSummary += [PSCustomObject]@{ Metric = "Running Flows"; Value = ($allFlows | Where-Object {$_.State -eq "Started"}).Count.ToString() }
+    $overallSummary += [PSCustomObject]@{ Metric = "Stopped Flows"; Value = ($allFlows | Where-Object {$_.State -eq "Stopped"}).Count.ToString() }
+    $overallSummary += [PSCustomObject]@{ Metric = "Orphaned Flows"; Value = ($allFlows | Where-Object {$_.IsOrphaned -eq $true}).Count.ToString() }
+    $overallSummary += [PSCustomObject]@{ Metric = "Flows with Owners"; Value = ($allFlows | Where-Object {$_.IsOrphaned -eq $false}).Count.ToString() }
+    $overallSummary += [PSCustomObject]@{ Metric = "Unique Creators"; Value = ($allFlows | Where-Object {$_.IsOrphaned -eq $false} | Select-Object CreatedBy -Unique).Count.ToString() }
+    $overallSummary += [PSCustomObject]@{ Metric = "Report Generated"; Value = (Get-Date -Format "yyyy-MM-dd HH:mm:ss") }
     
     # Export to Excel with multiple worksheets
     try {
@@ -211,14 +278,16 @@ try {
         $overallSummary | Export-Excel -Path $exportPath -WorksheetName "Overall Summary" -AutoSize -Append
         $envSummary | Export-Excel -Path $exportPath -WorksheetName "Environment Summary" -AutoSize -AutoFilter -FreezeTopRow -Append
         $creatorSummary | Export-Excel -Path $exportPath -WorksheetName "Creator Summary" -AutoSize -AutoFilter -FreezeTopRow -Append
+        $orphanedSummary | Export-Excel -Path $exportPath -WorksheetName "Orphaned Flows" -AutoSize -AutoFilter -FreezeTopRow -Append
         $triggerSummary | Export-Excel -Path $exportPath -WorksheetName "Trigger Summary" -AutoSize -AutoFilter -FreezeTopRow -Append
         
         Write-Host "Results exported to Excel file: $exportPath" -ForegroundColor Green
         Write-Host "Excel file contains the following worksheets:" -ForegroundColor Cyan
-        Write-Host "  - All Flows: Complete flow inventory" -ForegroundColor White
+        Write-Host "  - All Flows: Complete flow inventory (includes orphaned flows)" -ForegroundColor White
         Write-Host "  - Overall Summary: High-level statistics" -ForegroundColor White
-        Write-Host "  - Environment Summary: Breakdown by environment" -ForegroundColor White
-        Write-Host "  - Creator Summary: Breakdown by flow creator" -ForegroundColor White
+        Write-Host "  - Environment Summary: Breakdown by environment (includes orphaned count)" -ForegroundColor White
+        Write-Host "  - Creator Summary: Breakdown by flow creator (excludes orphaned)" -ForegroundColor White
+        Write-Host "  - Orphaned Flows: Summary of flows without owners" -ForegroundColor White
         Write-Host "  - Trigger Summary: Breakdown by trigger type" -ForegroundColor White
         
     } catch {
@@ -236,8 +305,8 @@ try {
 } catch {
     Write-Error "Script execution failed: $_"
 } finally {
-    # Cleanup modules (optional - comment out if you want to keep modules installed)
+    # Cleanup modules - ALWAYS runs even if script fails
     Write-Host "`nCleaning up modules..." -ForegroundColor Cyan
-    # Remove-RequiredModules -modules $requiredModules
-    Write-Host "Cleanup completed. Modules left installed for future use." -ForegroundColor Green
+    Remove-RequiredModules -modules $requiredModules
+    Write-Host "Module cleanup completed." -ForegroundColor Green
 }
