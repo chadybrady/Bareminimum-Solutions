@@ -1,6 +1,9 @@
 # Bareminimum Solutions
 
-A collection of PowerShell scripts and automation solutions for Microsoft 365, Azure, and related services.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue.svg)](https://github.com/PowerShell/PowerShell)
+
+A curated collection of PowerShell scripts and automation solutions for Microsoft 365, Azure, and related services. These scripts help IT administrators streamline common tasks and automate routine operations.
 
 ## Repository Structure
 
@@ -24,6 +27,7 @@ Excel file manipulation and conversion utilities.
 ### 📱 Intune
 Microsoft Intune device management scripts.
 - **Rename**: Device renaming utilities for Android devices
+- **Win32-ForceReinstallApp**: Force reinstallation of Win32 applications
 
 ### 📊 Monitoring
 Monitoring and reporting scripts for various Microsoft services.
@@ -35,8 +39,8 @@ Monitoring and reporting scripts for various Microsoft services.
 
 ### ⚡ Power-Platform
 Microsoft Power Platform (Power Apps, Power Automate) management scripts.
-- **Get_PP_Apps**: Retrieve Power Apps information
-- **Get_PP_Flows**: Retrieve Power Automate flows information
+- **Get-PP-Apps**: Retrieve Power Apps information
+- **Get-PP-Flows**: Retrieve Power Automate flows information
 - **Gather-System**: Comprehensive Power Platform inventory and reporting
 
 ## Prerequisites
@@ -65,4 +69,12 @@ When adding new scripts:
 
 ## Security Note
 
-These scripts often require administrative privileges. Always review and understand scripts before running them in production environments.
+⚠️ **Important**: These scripts often require administrative privileges. Always:
+- Review and understand scripts before running them in production environments
+- Test in a non-production environment first
+- Ensure you have proper backup and recovery procedures
+- Follow your organization's change management processes
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
