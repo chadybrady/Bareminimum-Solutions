@@ -41,4 +41,22 @@ Temporary Items
 # Exclude .NET assemblies from source
 *.dll
 
+# Exclude PowerShell transcript files
+*.transcript
+
+# Exclude temporary files
+*.tmp
+*.temp
+
+# Exclude log files
+*.log
+
+# Exclude CSV and Excel output files (common script outputs)
+*.csv
+*.xlsx
+
+# Exclude backup files
+*.bak
+*.backup
+
 # End of https://www.toptal.com/developers/gitignore/api/macos,powershell
