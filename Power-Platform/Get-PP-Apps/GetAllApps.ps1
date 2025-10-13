@@ -36,16 +36,18 @@ function Connect-Services {
 
 function Get-UserDetails {
     param([string]$UserId)
-    if (-not $UserId) { return @{DisplayName = "System/Unknown"; UserPrincipalName = "N/A"} }
+    if (-not $UserId) { return @{DisplayName = "System/Unknown"; UserPrincipalName = "N/A" } }
     try {
-        $user = Get-EntraUser -UserId $UserId -Property Id,DisplayName,UserPrincipalName -ErrorAction Stop
-        return @{DisplayName = $user.DisplayName; UserPrincipalName = $user.UserPrincipalName}
-    } catch {
+        $user = Get-EntraUser -UserId $UserId -Property Id, DisplayName, UserPrincipalName -ErrorAction Stop
+        return @{DisplayName = $user.DisplayName; UserPrincipalName = $user.UserPrincipalName }
+    }
+    catch {
         try {
-            $sp = Get-EntraServicePrincipal -ServicePrincipalId $UserId -Property Id,DisplayName,AppId -ErrorAction Stop
-            return @{DisplayName = "$($sp.DisplayName) (Service Principal)"; UserPrincipalName = $sp.AppId}
-        } catch {
-            return @{DisplayName = "Unknown Creator"; UserPrincipalName = $UserId}
+            $sp = Get-EntraServicePrincipal -ServicePrincipalId $UserId -Property Id, DisplayName, AppId -ErrorAction Stop
+            return @{DisplayName = "$($sp.DisplayName) (Service Principal)"; UserPrincipalName = $sp.AppId }
+        }
+        catch {
+            return @{DisplayName = "Unknown Creator"; UserPrincipalName = $UserId }
         }
     }
 }
@@ -72,8 +74,8 @@ try {
     $envNames = $envObjs.DisplayName
     Write-Colored "Available environments:" "Cyan"
     $displayList = @()
-    for ($i=0; $i -lt $envNames.Count; $i++) {
-        Write-Host (" [{0}] {1}" -f ($i+1), $envNames[$i]) -ForegroundColor White
+    for ($i = 0; $i -lt $envNames.Count; $i++) {
+        Write-Host (" [{0}] {1}" -f ($i + 1), $envNames[$i]) -ForegroundColor White
         $displayList += $envObjs[$i]
     }
     Write-Host (" [A] ALL ENVIRONMENTS") -ForegroundColor Yellow
@@ -86,8 +88,9 @@ try {
     $selected = @()
     if ($choice.ToUpper() -eq 'A') {
         $selected = $envObjs.EnvironmentName
-    } else {
-        $selected = $envObjs[([int]$choice)-1].EnvironmentName
+    }
+    else {
+        $selected = $envObjs[([int]$choice) - 1].EnvironmentName
     }
 
     # Legacy-friendly environment name display
@@ -107,7 +110,8 @@ try {
         Write-Colored "Retrieving Power Apps from environment: $env ..." "Cyan"
         try {
             $Apps = Get-AdminPowerApp -EnvironmentName $env
-        } catch {
+        }
+        catch {
             Write-Colored "Error getting apps for $env $($_.Exception.Message)" "Red"; continue
         }
         # --- FINAL DIVISION-BY-ZERO FIX ---
@@ -126,7 +130,8 @@ try {
 
             if ($App.Owner -and $App.Owner.Id) {
                 $OwnerId = $App.Owner.Id
-            } else {
+            }
+            else {
                 $OwnerId = $null
             }
 
@@ -136,32 +141,33 @@ try {
                 foreach ($Conn in $ConnRefs.PSObject.Properties) {
                     $ConnInfo = $Conn.Value
                     $ExportRows += [PSCustomObject]@{
-                        Environment        = $env
-                        AppName            = $App.AppName
-                        DisplayName        = $App.DisplayName
-                        OwnerId            = $OwnerId
-                        OwnerDisplayName   = $Owner.DisplayName
-                        OwnerPrincipal     = $Owner.UserPrincipalName
-                        CreatedTime        = $App.CreatedTime
-                        LastModifiedTime   = $App.LastModifiedTime
-                        ConnectorKey       = $Conn.Name
-                        ConnectorType      = $ConnInfo.ConnectorName
-                        ConnectorDisplay   = $ConnInfo.DisplayName
+                        Environment      = $env
+                        AppName          = $App.AppName
+                        DisplayName      = $App.DisplayName
+                        OwnerId          = $OwnerId
+                        OwnerDisplayName = $Owner.DisplayName
+                        OwnerPrincipal   = $Owner.UserPrincipalName
+                        CreatedTime      = $App.CreatedTime
+                        LastModifiedTime = $App.LastModifiedTime
+                        ConnectorKey     = $Conn.Name
+                        ConnectorType    = $ConnInfo.ConnectorName
+                        ConnectorDisplay = $ConnInfo.DisplayName
                     }
                 }
-            } else {
+            }
+            else {
                 $ExportRows += [PSCustomObject]@{
-                    Environment        = $env
-                    AppName            = $App.AppName
-                    DisplayName        = $App.DisplayName
-                    OwnerId            = $OwnerId
-                    OwnerDisplayName   = $Owner.DisplayName
-                    OwnerPrincipal     = $Owner.UserPrincipalName
-                    CreatedTime        = $App.CreatedTime
-                    LastModifiedTime   = $App.LastModifiedTime
-                    ConnectorKey       = ""
-                    ConnectorType      = ""
-                    ConnectorDisplay   = ""
+                    Environment      = $env
+                    AppName          = $App.AppName
+                    DisplayName      = $App.DisplayName
+                    OwnerId          = $OwnerId
+                    OwnerDisplayName = $Owner.DisplayName
+                    OwnerPrincipal   = $Owner.UserPrincipalName
+                    CreatedTime      = $App.CreatedTime
+                    LastModifiedTime = $App.LastModifiedTime
+                    ConnectorKey     = ""
+                    ConnectorType    = ""
+                    ConnectorDisplay = ""
                 }
             }
 
@@ -175,9 +181,11 @@ try {
     $ExportRows | Export-Csv -Path $FilePath -NoTypeInformation -Encoding UTF8
     Write-Colored "Export completed: $FilePath" "Green"
 
-} catch {
+}
+catch {
     Write-Colored "Script failed: $($_.Exception.Message)" "Red"
-} finally {
+}
+finally {
     Disconnect-Services
     Write-Colored "Script completed." "Green"
 }
